@@ -64,8 +64,8 @@ function openDetails(id) {
   document.querySelector("#detail-email").textContent = selectedCustomer.email;
   document.querySelector("#detail-plan").textContent = `${planName(selectedCustomer)} · ${billingCycle(selectedCustomer).label}`;
   document.querySelector("#detail-status").textContent = selectedCustomer.status === "past_due" ? "Past due" : selectedCustomer.status[0].toUpperCase() + selectedCustomer.status.slice(1);
-  document.querySelector("#detail-renewal").textContent = formatDate(selectedCustomer.renewal);
-  document.querySelector("#detail-joined").textContent = formatDate(selectedCustomer.joined);
+  document.querySelector("#detail-start").textContent = formatDate(selectedCustomer.startDate || selectedCustomer.joined);
+  document.querySelector("#detail-end").textContent = formatDate(selectedCustomer.endDate || selectedCustomer.renewal);
   document.querySelector("#detail-modal").classList.add("is-open");
   document.querySelector("#detail-modal").setAttribute("aria-hidden", "false");
 }
@@ -75,6 +75,15 @@ function updateSubscription(action) {
   if (action === "renew") { selectedCustomer.status = "active"; selectedCustomer.renewal = new Date(Date.now() + billingCycle(selectedCustomer).days * 86400000).toISOString(); addActivity("Subscription renewed", selectedCustomer); }
   if (action === "cancel") { selectedCustomer.status = "cancelled"; addActivity("Subscription cancelled", selectedCustomer); }
   saveCustomers(); renderStats(); renderTable(); renderActivity(); openDetails(selectedCustomer.id);
+}
+function closeAddModal() { document.querySelector("#add-modal").classList.remove("is-open"); document.querySelector("#add-modal").setAttribute("aria-hidden", "true"); }
+function openAddModal() {
+  const today = new Date();
+  const end = new Date(today.getTime() + 90 * 86400000);
+  document.querySelector("#new-start").value = today.toISOString().slice(0, 10);
+  document.querySelector("#new-end").value = end.toISOString().slice(0, 10);
+  document.querySelector("#add-modal").classList.add("is-open");
+  document.querySelector("#add-modal").setAttribute("aria-hidden", "false");
 }
 function deleteCustomer() {
   if (!selectedCustomer || !window.confirm(`Delete ${selectedCustomer.name || "this customer"} permanently? They will be able to register again with the same email.`)) return;
@@ -98,6 +107,38 @@ document.querySelector("#detail-modal").addEventListener("click", (event) => { i
 document.querySelector("#detail-renew").addEventListener("click", () => updateSubscription("renew"));
 document.querySelector("#detail-cancel").addEventListener("click", () => updateSubscription("cancel"));
 document.querySelector("#detail-delete").addEventListener("click", deleteCustomer);
+document.querySelector("#add-customer").addEventListener("click", openAddModal);
+document.querySelector("#add-close").addEventListener("click", closeAddModal);
+document.querySelector("#add-modal").addEventListener("click", (event) => { if (event.target.id === "add-modal") closeAddModal(); });
+document.querySelector("#add-customer-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const start = document.querySelector("#new-start").value;
+  const end = document.querySelector("#new-end").value;
+  const email = document.querySelector("#new-email").value.trim().toLowerCase();
+  const error = document.querySelector("#add-error");
+  if (new Date(end) <= new Date(start)) { error.textContent = "End date must be after the start date."; return; }
+  if (customers.some((customer) => customer.email === email)) { error.textContent = "A customer with this email already exists."; return; }
+  const customer = {
+    id: `manual-${Date.now()}`,
+    name: document.querySelector("#new-name").value.trim(),
+    email,
+    phone: document.querySelector("#new-phone").value.trim(),
+    plan: document.querySelector("#new-plan").value,
+    billingCycle: document.querySelector("#new-cycle").value,
+    status: "active",
+    startDate: new Date(`${start}T00:00:00`).toISOString(),
+    joined: new Date(`${start}T00:00:00`).toISOString(),
+    endDate: new Date(`${end}T23:59:59`).toISOString(),
+    renewal: new Date(`${end}T23:59:59`).toISOString(),
+    manuallyAdded: true
+  };
+  customers = [...customers, customer];
+  saveCustomers();
+  addActivity("Member added manually", customer);
+  closeAddModal();
+  event.target.reset();
+  renderStats(); renderTable(); renderActivity();
+});
 document.querySelector("#admin-logout").addEventListener("click", () => { window.location.href = "index.html"; });
 document.querySelector("#export-customers").addEventListener("click", () => {
   const header = "Name,Email,Plan,Billing cycle,Status,Next renewal,Joined\n";

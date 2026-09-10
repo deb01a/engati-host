@@ -56,6 +56,7 @@ function signupField(mode) { return mode === "signup"; }
 
 function openPlanChooser(plan) {
   state.selectedPlan = plan;
+  document.querySelector("#plan-modal-eyebrow").textContent = `${PLAN_NAMES[plan].toUpperCase()} PACKAGE`;
   openModal(planModal);
 }
 
@@ -80,34 +81,6 @@ function showDashboard(account) {
     return;
   }
 
-  async function startCheckout(plan) {
-    const account = JSON.parse(localStorage.getItem("engatiHostSession") || "null");
-    if (!account) {
-      openAuth("login");
-      return;
-    }
-    const hostedCheckoutUrl = FLUTTERWAVE_CHECKOUT_LINKS[`${plan}-${state.billingCycle}`];
-    if (hostedCheckoutUrl) {
-      window.location.href = hostedCheckoutUrl;
-      return;
-    }
-    const button = document.querySelector(`[data-plan="${plan}"]`);
-    if (button) button.disabled = true;
-    try {
-      const response = await fetch(paymentFunction, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, billingCycle: state.billingCycle, email: account.email, name: account.name, redirectUrl: `${window.location.origin}${window.location.pathname}?payment=flutterwave` })
-      });
-      const result = await response.json();
-      if (!response.ok || !result.checkoutUrl) throw new Error(result.error || "Unable to start checkout");
-      localStorage.setItem("engatiHostPendingPayment", JSON.stringify({ txRef: result.txRef, plan, billingCycle: state.billingCycle }));
-      window.location.href = result.checkoutUrl;
-    } catch (error) {
-      window.alert(error.message);
-      if (button) button.disabled = false;
-    }
-  }
   const plan = PLANS[account.plan] || PLANS.growth;
   const cycle = BILLING_CYCLES[account.billingCycle] || BILLING_CYCLES.yearly;
   document.querySelector("#dashboard-status").textContent = "● Active";
@@ -119,26 +92,53 @@ function showDashboard(account) {
   openModal(dashboardModal);
 }
 
+async function startCheckout(plan) {
+  const account = JSON.parse(localStorage.getItem("engatiHostSession") || "null");
+  if (!account) {
+    openAuth("login", plan);
+    return;
+  }
+  const hostedCheckoutUrl = FLUTTERWAVE_CHECKOUT_LINKS[`${plan}-${state.billingCycle}`];
+  if (hostedCheckoutUrl) {
+    window.location.href = hostedCheckoutUrl;
+    return;
+  }
+  try {
+    const response = await fetch(paymentFunction, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan, billingCycle: state.billingCycle, email: account.email, name: account.name, redirectUrl: `${window.location.origin}${window.location.pathname}?payment=flutterwave` })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.checkoutUrl) throw new Error(result.error || "Unable to start checkout");
+    localStorage.setItem("engatiHostPendingPayment", JSON.stringify({ txRef: result.txRef, plan, billingCycle: state.billingCycle }));
+    window.location.href = result.checkoutUrl;
+  } catch (error) {
+    window.alert(error.message);
+  }
+}
+
 document.querySelectorAll("[data-open-auth]").forEach((button) => {
   button.addEventListener("click", () => {
     if (button.dataset.plan && localStorage.getItem("engatiHostSession")) startCheckout(button.dataset.plan);
     else openAuth(button.dataset.openAuth, button.dataset.plan);
   });
 
-  document.querySelectorAll("[data-select-plan]").forEach((button) => {
-    button.addEventListener("click", () => openPlanChooser(button.dataset.selectPlan));
-  });
+});
 
-  document.querySelectorAll("[data-cycle-choice]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.billingCycle = button.dataset.cycleChoice;
-      closeModal(planModal);
-      if (state.billingCycle === "bi-annual" && state.selectedPlan === "accelerator") {
-        window.location.href = FLUTTERWAVE_CHECKOUT_LINKS["accelerator-bi-annual"];
-        return;
-      }
-      openAuth("signup", state.selectedPlan);
-    });
+document.querySelectorAll("[data-select-plan]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const plan = button.dataset.selectPlan;
+    if (localStorage.getItem("engatiHostSession")) openPlanChooser(plan);
+    else openAuth("login", plan);
+  });
+});
+
+document.querySelectorAll("[data-cycle-choice]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.billingCycle = button.dataset.cycleChoice;
+    closeModal(planModal);
+    startCheckout(state.selectedPlan);
   });
 });
 
@@ -166,9 +166,9 @@ authForm.addEventListener("submit", (event) => {
     const account = { email, password, name: name || "friend", plan: null, billingCycle: null, status: "inactive", joined: new Date().toISOString() };
     localStorage.setItem("engatiHostAccounts", JSON.stringify([...accounts, account]));
     localStorage.setItem("engatiHostSession", JSON.stringify(account));
-    const hostedCheckoutUrl = FLUTTERWAVE_CHECKOUT_LINKS[`${state.selectedPlan}-${state.billingCycle}`];
-    if (hostedCheckoutUrl) {
-      window.location.href = hostedCheckoutUrl;
+    if (state.selectedPlan) {
+      closeModal(authModal);
+      openPlanChooser(state.selectedPlan);
       return;
     }
     showDashboard(account);
@@ -179,6 +179,11 @@ authForm.addEventListener("submit", (event) => {
       return;
     }
     localStorage.setItem("engatiHostSession", JSON.stringify(account));
+    if (state.selectedPlan) {
+      closeModal(authModal);
+      openPlanChooser(state.selectedPlan);
+      return;
+    }
     showDashboard(account);
   }
 });
