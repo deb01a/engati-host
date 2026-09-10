@@ -54,6 +54,18 @@ function openAuth(mode, plan) {
 
 function signupField(mode) { return mode === "signup"; }
 
+function updateProfile(account = JSON.parse(localStorage.getItem("engatiHostSession") || "null")) {
+  const loggedIn = Boolean(account);
+  document.querySelector("#login-nav").classList.toggle("hidden", loggedIn);
+  document.querySelector("#signup-nav").classList.toggle("hidden", loggedIn);
+  document.querySelector("#profile-nav").classList.toggle("hidden", !loggedIn);
+  if (loggedIn) {
+    const name = account.name || account.email.split("@")[0];
+    document.querySelector("#profile-name").textContent = name;
+    document.querySelector("#profile-avatar").textContent = name.slice(0, 1).toUpperCase();
+  }
+}
+
 function openPlanChooser(plan) {
   state.selectedPlan = plan;
   document.querySelector("#plan-modal-eyebrow").textContent = `${PLANS[plan].name.toUpperCase()} PACKAGE`;
@@ -166,6 +178,7 @@ authForm.addEventListener("submit", (event) => {
     const account = { email, password, name: name || "friend", plan: null, billingCycle: null, status: "inactive", joined: new Date().toISOString() };
     localStorage.setItem("engatiHostAccounts", JSON.stringify([...accounts, account]));
     localStorage.setItem("engatiHostSession", JSON.stringify(account));
+    updateProfile(account);
     if (state.selectedPlan) {
       closeModal(authModal);
       openPlanChooser(state.selectedPlan);
@@ -179,6 +192,7 @@ authForm.addEventListener("submit", (event) => {
       return;
     }
     localStorage.setItem("engatiHostSession", JSON.stringify(account));
+    updateProfile(account);
     if (state.selectedPlan) {
       closeModal(authModal);
       openPlanChooser(state.selectedPlan);
@@ -190,7 +204,13 @@ authForm.addEventListener("submit", (event) => {
 
 document.querySelector("#logout-button").addEventListener("click", () => {
   localStorage.removeItem("engatiHostSession");
+  updateProfile(null);
   closeModal(dashboardModal);
+});
+
+document.querySelector("#profile-nav").addEventListener("click", () => {
+  const account = JSON.parse(localStorage.getItem("engatiHostSession") || "null");
+  if (account) showDashboard(account);
 });
 
 document.querySelectorAll("[data-billing]").forEach((button) => button.addEventListener("click", () => {
@@ -221,6 +241,7 @@ async function verifyPaymentReturn() {
   showDashboard(updated);
 }
 verifyPaymentReturn();
+updateProfile();
 
 const menuToggle = document.querySelector(".menu-toggle");
 menuToggle.addEventListener("click", () => {
