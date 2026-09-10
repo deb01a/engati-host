@@ -1,0 +1,13 @@
+{
+  "name": "engati-host",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Engati Host customer-facing marketing site and subscription portal.",
+  "scripts": {
+    "start": "npx serve .",
+    "dev": "npx netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}
