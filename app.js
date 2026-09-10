@@ -9,6 +9,9 @@ const BILLING_CYCLES = {
   yearly: { label: "Yearly", months: 12, multiplier: 4 }
 };
 const ACTIVE_PLAN = "accelerator";
+const FLUTTERWAVE_CHECKOUT_LINKS = {
+  "accelerator-bi-annual": "https://flutterwave.com/pay/4oaxpyylovgj?_gl=1%2a107hr0c%2a_gcl_au%2aNzQ4NDY5Njk5LjE3ODkwMzI4MzE.%2a_ga%2aMTU4NzI3ODEzNS4xNzg5MDMyNjI5%2a_ga_KQ9NSEMFCF%2aczE3ODkwMzI2NDMkbzEkZzEkdDE3ODkwMzM0MDckajU5JGwwJGgw"
+};
 
 const state = { authMode: "login", selectedPlan: null, billingCycle: "quarterly" };
 const authModal = document.querySelector("#auth-modal");
@@ -82,6 +85,11 @@ function showDashboard(account) {
       openAuth("login");
       return;
     }
+    const hostedCheckoutUrl = FLUTTERWAVE_CHECKOUT_LINKS[`${plan}-${state.billingCycle}`];
+    if (hostedCheckoutUrl) {
+      window.location.href = hostedCheckoutUrl;
+      return;
+    }
     const button = document.querySelector(`[data-plan="${plan}"]`);
     if (button) button.disabled = true;
     try {
@@ -141,6 +149,11 @@ authForm.addEventListener("submit", (event) => {
     const account = { email, password, name: name || "friend", plan: null, billingCycle: null, status: "inactive", joined: new Date().toISOString() };
     localStorage.setItem("engatiHostAccounts", JSON.stringify([...accounts, account]));
     localStorage.setItem("engatiHostSession", JSON.stringify(account));
+    const hostedCheckoutUrl = FLUTTERWAVE_CHECKOUT_LINKS[`${state.selectedPlan}-${state.billingCycle}`];
+    if (hostedCheckoutUrl) {
+      window.location.href = hostedCheckoutUrl;
+      return;
+    }
     showDashboard(account);
   } else {
     const account = accounts.find((item) => item.email === email && item.password === password);
