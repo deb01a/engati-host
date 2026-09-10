@@ -8,7 +8,6 @@ const BILLING_CYCLES = {
   "bi-annual": { label: "Bi-annual", months: 6, multiplier: 2 },
   yearly: { label: "Yearly", months: 12, multiplier: 4 }
 };
-const ACTIVE_PLAN = "accelerator";
 const FLUTTERWAVE_CHECKOUT_LINKS = {
   "accelerator-bi-annual": "https://flutterwave.com/pay/4oaxpyylovgj?_gl=1%2a107hr0c%2a_gcl_au%2aNzQ4NDY5Njk5LjE3ODkwMzI4MzE.%2a_ga%2aMTU4NzI3ODEzNS4xNzg5MDMyNjI5%2a_ga_KQ9NSEMFCF%2aczE3ODkwMzI2NDMkbzEkZzEkdDE3ODkwMzM0MDckajU5JGwwJGgw"
 };
@@ -16,6 +15,7 @@ const FLUTTERWAVE_CHECKOUT_LINKS = {
 const state = { authMode: "login", selectedPlan: null, billingCycle: "quarterly" };
 const authModal = document.querySelector("#auth-modal");
 const dashboardModal = document.querySelector("#dashboard-modal");
+const planModal = document.querySelector("#plan-modal");
 const authForm = document.querySelector("#auth-form");
 const paymentFunction = "/.netlify/functions/payments";
 
@@ -54,6 +54,11 @@ function openAuth(mode, plan) {
 
 function signupField(mode) { return mode === "signup"; }
 
+function openPlanChooser(plan) {
+  state.selectedPlan = plan;
+  openModal(planModal);
+}
+
 function getAccounts() {
   const accounts = JSON.parse(localStorage.getItem("engatiHostAccounts") || "[]");
   const deleted = JSON.parse(localStorage.getItem("engatiHostDeletedCustomers") || "[]");
@@ -76,10 +81,6 @@ function showDashboard(account) {
   }
 
   async function startCheckout(plan) {
-    if (plan !== ACTIVE_PLAN) {
-      window.alert("This package will be available soon. Accelerator is currently open for payment.");
-      return;
-    }
     const account = JSON.parse(localStorage.getItem("engatiHostSession") || "null");
     if (!account) {
       openAuth("login");
@@ -122,6 +123,22 @@ document.querySelectorAll("[data-open-auth]").forEach((button) => {
   button.addEventListener("click", () => {
     if (button.dataset.plan && localStorage.getItem("engatiHostSession")) startCheckout(button.dataset.plan);
     else openAuth(button.dataset.openAuth, button.dataset.plan);
+  });
+
+  document.querySelectorAll("[data-select-plan]").forEach((button) => {
+    button.addEventListener("click", () => openPlanChooser(button.dataset.selectPlan));
+  });
+
+  document.querySelectorAll("[data-cycle-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.billingCycle = button.dataset.cycleChoice;
+      closeModal(planModal);
+      if (state.billingCycle === "bi-annual" && state.selectedPlan === "accelerator") {
+        window.location.href = FLUTTERWAVE_CHECKOUT_LINKS["accelerator-bi-annual"];
+        return;
+      }
+      openAuth("signup", state.selectedPlan);
+    });
   });
 });
 

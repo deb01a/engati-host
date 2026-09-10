@@ -3,7 +3,6 @@ const plans = {
   growth: 399,
   enterprise: 599
 };
-const activePlan = "accelerator";
 const billing = {
   quarterly: { multiplier: 1, months: 3 },
   "bi-annual": { multiplier: 2, months: 6 },
@@ -42,7 +41,6 @@ export default async (event) => {
       const body = JSON.parse(event.body || "{}");
       const cycle = billing[body.billingCycle];
       const quarterlyPrice = plans[body.plan];
-      if (body.plan !== activePlan) return response({ error: "This package is not available for payment yet" }, 403);
       if (!quarterlyPrice || !cycle || !body.email) return response({ error: "A valid plan, billing cycle, and email are required" }, 400);
 
       const txRef = `engati-${body.plan}-${body.billingCycle}-${crypto.randomUUID()}`;
@@ -71,7 +69,7 @@ export default async (event) => {
       const parts = String(transaction.tx_ref || "").split("-");
       const plan = parts[1];
       const billingCycle = parts[2];
-      if (plan !== activePlan) return response({ verified: false, error: "This package is not available for payment yet" }, 403);
+      if (!plans[plan] || !billing[billingCycle]) return response({ verified: false, error: "Invalid payment reference" }, 400);
       const expectedAmount = plans[plan] * billing[billingCycle].multiplier;
       const valid = transaction.status === "successful"
         && transaction.currency === (process.env.FLW_CURRENCY || "USD")
