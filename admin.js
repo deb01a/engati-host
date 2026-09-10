@@ -22,7 +22,7 @@ const getCustomers = () => {
   return stored.map((customer, index) => ({
   ...customer,
   id: customer.id || `local-${index}`,
-  status: customer.status || "active",
+  status: customer.status === "active" && customer.endDate && new Date(customer.endDate) < new Date() ? "expired" : (customer.status || "active"),
   plan: customer.plan === "quarterly" ? "accelerator" : customer.plan === "yearly" ? "growth" : customer.plan || null,
   billingCycle: customer.billingCycle || (customer.plan === "quarterly" ? "quarterly" : "yearly"),
   joined: customer.joined || new Date().toISOString(),
@@ -46,7 +46,7 @@ function renderTable() {
   const search = document.querySelector("#customer-search").value.toLowerCase();
   const status = document.querySelector("#status-filter").value;
   const filtered = customers.filter((customer) => `${customer.name} ${customer.email}`.toLowerCase().includes(search) && (status === "all" || customer.status === status));
-  document.querySelector("#customer-rows").innerHTML = filtered.map((customer) => `<tr><td><div class="customer-cell"><span class="table-avatar">${initials(customer.name)}</span><span><strong>${customer.name || "Customer"}</strong><small>${customer.email}</small></span></div></td><td><span class="plan-label">${planName(customer)} <small>${billingCycle(customer).label}</small></span></td><td><span class="status status-${customer.status}"><i></i>${customer.status === "past_due" ? "Past due" : customer.status[0].toUpperCase() + customer.status.slice(1)}</span></td><td>${formatDate(customer.renewal)}</td><td>${formatDate(customer.joined)}</td><td><button class="row-action" data-customer="${customer.id}">View →</button></td></tr>`).join("");
+  document.querySelector("#customer-rows").innerHTML = filtered.map((customer) => `<tr><td><div class="customer-cell"><span class="table-avatar">${initials(customer.name)}</span><span><strong>${customer.name || "Customer"}</strong><small>${customer.email}</small></span></div></td><td><span class="plan-label">${planName(customer)} <small>${billingCycle(customer).label}</small></span></td><td><span class="status status-${customer.status}"><i></i>${customer.status === "past_due" ? "Past due" : customer.status[0].toUpperCase() + customer.status.slice(1)}</span></td><td>${formatDate(customer.endDate || customer.renewal)}</td><td>${formatDate(customer.joined)}</td><td><button class="row-action" data-customer="${customer.id}">View →</button></td></tr>`).join("");
   document.querySelector("#empty-state").classList.toggle("hidden", filtered.length > 0);
   document.querySelectorAll("[data-customer]").forEach((button) => button.addEventListener("click", () => openDetails(button.dataset.customer)));
 }
@@ -72,7 +72,7 @@ function openDetails(id) {
 function closeDetails() { document.querySelector("#detail-modal").classList.remove("is-open"); document.querySelector("#detail-modal").setAttribute("aria-hidden", "true"); }
 function updateSubscription(action) {
   if (!selectedCustomer) return;
-  if (action === "renew") { selectedCustomer.status = "active"; selectedCustomer.renewal = new Date(Date.now() + billingCycle(selectedCustomer).days * 86400000).toISOString(); addActivity("Subscription renewed", selectedCustomer); }
+  if (action === "renew") { selectedCustomer.status = "active"; selectedCustomer.startDate = new Date().toISOString(); selectedCustomer.endDate = new Date(Date.now() + billingCycle(selectedCustomer).days * 86400000).toISOString(); selectedCustomer.renewal = selectedCustomer.endDate; addActivity("Subscription renewed", selectedCustomer); }
   if (action === "cancel") { selectedCustomer.status = "cancelled"; addActivity("Subscription cancelled", selectedCustomer); }
   saveCustomers(); renderStats(); renderTable(); renderActivity(); openDetails(selectedCustomer.id);
 }
@@ -118,10 +118,12 @@ document.querySelector("#add-customer-form").addEventListener("submit", (event) 
   const error = document.querySelector("#add-error");
   if (new Date(end) <= new Date(start)) { error.textContent = "End date must be after the start date."; return; }
   if (customers.some((customer) => customer.email === email)) { error.textContent = "A customer with this email already exists."; return; }
+  const password = document.querySelector("#new-password").value;
   const customer = {
     id: `manual-${Date.now()}`,
     name: document.querySelector("#new-name").value.trim(),
     email,
+    password,
     phone: document.querySelector("#new-phone").value.trim(),
     plan: document.querySelector("#new-plan").value,
     billingCycle: document.querySelector("#new-cycle").value,

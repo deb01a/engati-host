@@ -83,11 +83,19 @@ function getAccounts() {
 }
 
 function showDashboard(account) {
-  if (!account.plan || account.status !== "active") {
-    document.querySelector("#dashboard-status").textContent = "● No subscription";
-    document.querySelector("#dashboard-plan-name").textContent = "No subscription";
-    document.querySelector("#dashboard-plan-price").textContent = "Choose a plan";
-    document.querySelector("#dashboard-plan-renewal").textContent = "Select a plan below to subscribe";
+  const expiry = account.endDate || account.renewal;
+  const expired = expiry && new Date(expiry) < new Date();
+  if (!account.plan || account.status !== "active" || expired) {
+    const hasExpiredPackage = Boolean(account.plan && expired);
+    document.querySelector("#dashboard-greeting").textContent = `Good to see you, ${account.name || "friend"}.`;
+    document.querySelector("#dashboard-status").textContent = hasExpiredPackage ? "● Package expired" : "● No subscription";
+    document.querySelector("#dashboard-plan-name").textContent = hasExpiredPackage ? `${PLANS[account.plan]?.name || "Your"} package expired` : "No subscription";
+    document.querySelector("#dashboard-plan-price").textContent = hasExpiredPackage ? "Renew package" : "Choose a plan";
+    document.querySelector("#dashboard-plan-renewal").textContent = hasExpiredPackage ? `Ended ${new Date(expiry).toLocaleDateString()}` : "Select a plan below to subscribe";
+    document.querySelector("#dashboard-access-title").textContent = hasExpiredPackage ? "Your profile is still active" : "Account created";
+    document.querySelector("#dashboard-access-copy").textContent = hasExpiredPackage ? "Your package has ended. Choose a package below to renew access." : "Your account is ready. Pick a plan below when you are ready to subscribe.";
+    document.querySelector("#dashboard-renew").textContent = hasExpiredPackage ? "Renew package ↗" : "Choose a plan ↗";
+    document.querySelector("#dashboard-renew").onclick = () => openPlanChooser(account.plan || "accelerator");
     closeModal(authModal);
     openModal(dashboardModal);
     return;
@@ -100,6 +108,10 @@ function showDashboard(account) {
   document.querySelector("#dashboard-plan-name").textContent = plan.name;
   document.querySelector("#dashboard-plan-price").innerHTML = `$${plan.price * cycle.multiplier}<span>/${cycle.label.toLowerCase()}</span>`;
   document.querySelector("#dashboard-plan-renewal").textContent = `Renews ${cycle.label.toLowerCase()}`;
+  document.querySelector("#dashboard-access-title").textContent = "Subscription active";
+  document.querySelector("#dashboard-access-copy").textContent = `Your ${plan.name} package is available until ${new Date(account.endDate || account.renewal).toLocaleDateString()}.`;
+  document.querySelector("#dashboard-renew").textContent = "Change or renew package ↗";
+  document.querySelector("#dashboard-renew").onclick = () => openPlanChooser(account.plan);
   closeModal(authModal);
   openModal(dashboardModal);
 }
@@ -211,6 +223,11 @@ document.querySelector("#logout-button").addEventListener("click", () => {
 document.querySelector("#profile-nav").addEventListener("click", () => {
   const account = JSON.parse(localStorage.getItem("engatiHostSession") || "null");
   if (account) showDashboard(account);
+});
+
+document.querySelector("#dashboard-renew").addEventListener("click", () => {
+  const account = JSON.parse(localStorage.getItem("engatiHostSession") || "null");
+  if (account) openPlanChooser(account.plan || "accelerator");
 });
 
 document.querySelectorAll("[data-billing]").forEach((button) => button.addEventListener("click", () => {
