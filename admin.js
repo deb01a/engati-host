@@ -77,6 +77,12 @@ function updateSubscription(action) {
   saveCustomers(); renderStats(); renderTable(); renderActivity(); openDetails(selectedCustomer.id);
 }
 function closeAddModal() { document.querySelector("#add-modal").classList.remove("is-open"); document.querySelector("#add-modal").setAttribute("aria-hidden", "true"); }
+function showToast(message) {
+  const toast = document.querySelector("#admin-toast");
+  toast.textContent = message;
+  toast.classList.add("is-visible");
+  window.setTimeout(() => toast.classList.remove("is-visible"), 5000);
+}
 function openAddModal() {
   const today = new Date();
   const end = new Date(today.getTime() + 90 * 86400000);
@@ -139,6 +145,7 @@ document.querySelector("#add-customer-form").addEventListener("submit", (event) 
   addActivity("Member added manually", customer);
   closeAddModal();
   event.target.reset();
+  showToast(`${customer.name} was added. They can log in with ${customer.email} and the password you entered.`);
   renderStats(); renderTable(); renderActivity();
 });
 document.querySelector("#admin-logout").addEventListener("click", () => { window.location.href = "index.html"; });
