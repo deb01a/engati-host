@@ -56,7 +56,7 @@ function signupField(mode) { return mode === "signup"; }
 
 function openPlanChooser(plan) {
   state.selectedPlan = plan;
-  document.querySelector("#plan-modal-eyebrow").textContent = `${PLAN_NAMES[plan].toUpperCase()} PACKAGE`;
+  document.querySelector("#plan-modal-eyebrow").textContent = `${PLANS[plan].name.toUpperCase()} PACKAGE`;
   openModal(planModal);
 }
 
