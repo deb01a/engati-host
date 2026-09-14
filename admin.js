@@ -12,6 +12,16 @@ const initials = (name) => (name || "Customer").split(" ").map((part) => part[0]
 const planName = (customer) => PLAN_NAMES[customer.plan] || "No subscription";
 const billingCycle = (customer) => BILLING[customer.billingCycle] || BILLING.yearly;
 const planPrice = (customer) => (PLAN_PRICES[customer.plan] || 0) * (billingCycle(customer).multiplier || 1);
+const historyFor = (customer) => Array.isArray(customer.subscriptions) ? customer.subscriptions : (customer.plan ? [{
+  id: `subscription-${customer.email}`,
+  plan: customer.plan,
+  billingCycle: customer.billingCycle || "quarterly",
+  price: customer.price || planPrice(customer),
+  status: customer.status || "active",
+  startDate: customer.startDate || customer.joined,
+  endDate: customer.endDate || customer.renewal,
+  createdAt: customer.joined || new Date().toISOString()
+}] : []);
 const getCustomers = () => {
   const stored = JSON.parse(localStorage.getItem(seedKey) || "[]");
   const deleted = JSON.parse(localStorage.getItem(deletedKey) || "[]");
@@ -21,6 +31,7 @@ const getCustomers = () => {
   }
   return stored.map((customer, index) => ({
   ...customer,
+  subscriptions: historyFor(customer),
   id: customer.id || `local-${index}`,
   status: customer.status === "active" && customer.endDate && new Date(customer.endDate) < new Date() ? "expired" : (customer.status || "active"),
   plan: customer.plan === "quarterly" ? "accelerator" : customer.plan === "yearly" ? "growth" : customer.plan || null,
@@ -32,6 +43,29 @@ const getCustomers = () => {
 const saveCustomers = () => localStorage.setItem(seedKey, JSON.stringify(customers));
 const getActivities = () => JSON.parse(localStorage.getItem(activityKey) || "[]");
 const addActivity = (message, customer) => localStorage.setItem(activityKey, JSON.stringify([{ message, name: customer.name || "Customer", date: new Date().toISOString() }, ...getActivities()].slice(0, 8)));
+
+function renderSubscriptionHistory() {
+  const history = [...historyFor(selectedCustomer)].sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+  document.querySelector("#subscription-history").innerHTML = history.length ? history.map((subscription) => `<div class="subscription-history-item"><div><strong>${planName(subscription)} · ${BILLING[subscription.billingCycle]?.label || subscription.billingCycle}</strong><small>${subscription.status} · ${formatDate(subscription.startDate)} – ${formatDate(subscription.endDate)}</small></div><span><button class="row-action" data-edit-subscription="${subscription.id}">Edit</button><button class="row-action danger-link" data-delete-subscription="${subscription.id}">Delete</button></span></div>`).join("") : '<p class="history-empty">No subscription records yet.</p>';
+  document.querySelectorAll("[data-edit-subscription]").forEach((button) => button.addEventListener("click", () => editSubscription(button.dataset.editSubscription)));
+  document.querySelectorAll("[data-delete-subscription]").forEach((button) => button.addEventListener("click", () => deleteSubscription(button.dataset.deleteSubscription)));
+}
+function openSubscriptionForm(subscription = null) {
+  document.querySelector("#subscription-form").classList.remove("hidden");
+  document.querySelector("#subscription-id").value = subscription?.id || "";
+  document.querySelector("#subscription-plan").value = subscription?.plan || "accelerator";
+  document.querySelector("#subscription-cycle").value = subscription?.billingCycle || "quarterly";
+  document.querySelector("#subscription-status").value = subscription?.status || "active";
+  document.querySelector("#subscription-start").value = (subscription?.startDate || new Date().toISOString()).slice(0, 10);
+  document.querySelector("#subscription-end").value = (subscription?.endDate || new Date(Date.now() + 90 * 86400000).toISOString()).slice(0, 10);
+  document.querySelector("#subscription-error").textContent = "";
+}
+function editSubscription(id) { openSubscriptionForm(historyFor(selectedCustomer).find((subscription) => subscription.id === id)); }
+function deleteSubscription(id) {
+  if (!selectedCustomer || !window.confirm("Delete this subscription history record?")) return;
+  selectedCustomer.subscriptions = historyFor(selectedCustomer).filter((subscription) => subscription.id !== id);
+  saveCustomers(); addActivity("Subscription history deleted", selectedCustomer); renderSubscriptionHistory(); renderStats(); renderTable(); renderActivity(); showToast("Subscription record deleted.");
+}
 
 function renderStats() {
   const active = customers.filter((customer) => customer.status === "active");
@@ -66,13 +100,21 @@ function openDetails(id) {
   document.querySelector("#detail-status").textContent = selectedCustomer.status === "past_due" ? "Past due" : selectedCustomer.status[0].toUpperCase() + selectedCustomer.status.slice(1);
   document.querySelector("#detail-start").textContent = formatDate(selectedCustomer.startDate || selectedCustomer.joined);
   document.querySelector("#detail-end").textContent = formatDate(selectedCustomer.endDate || selectedCustomer.renewal);
+  renderSubscriptionHistory();
   document.querySelector("#detail-modal").classList.add("is-open");
   document.querySelector("#detail-modal").setAttribute("aria-hidden", "false");
 }
 function closeDetails() { document.querySelector("#detail-modal").classList.remove("is-open"); document.querySelector("#detail-modal").setAttribute("aria-hidden", "true"); }
 function updateSubscription(action) {
   if (!selectedCustomer) return;
-  if (action === "renew") { selectedCustomer.status = "active"; selectedCustomer.startDate = new Date().toISOString(); selectedCustomer.endDate = new Date(Date.now() + billingCycle(selectedCustomer).days * 86400000).toISOString(); selectedCustomer.renewal = selectedCustomer.endDate; addActivity("Subscription renewed", selectedCustomer); }
+  if (action === "renew") {
+    selectedCustomer.status = "active";
+    selectedCustomer.startDate = new Date().toISOString();
+    selectedCustomer.endDate = new Date(Date.now() + billingCycle(selectedCustomer).days * 86400000).toISOString();
+    selectedCustomer.renewal = selectedCustomer.endDate;
+    selectedCustomer.subscriptions = [...historyFor(selectedCustomer), { id: `subscription-${Date.now()}`, plan: selectedCustomer.plan, billingCycle: selectedCustomer.billingCycle, price: planPrice(selectedCustomer), status: "active", startDate: selectedCustomer.startDate, endDate: selectedCustomer.endDate, createdAt: new Date().toISOString() }];
+    addActivity("Subscription renewed", selectedCustomer);
+  }
   if (action === "cancel") { selectedCustomer.status = "cancelled"; addActivity("Subscription cancelled", selectedCustomer); }
   saveCustomers(); renderStats(); renderTable(); renderActivity(); openDetails(selectedCustomer.id);
 }
@@ -113,6 +155,22 @@ document.querySelector("#detail-modal").addEventListener("click", (event) => { i
 document.querySelector("#detail-renew").addEventListener("click", () => updateSubscription("renew"));
 document.querySelector("#detail-cancel").addEventListener("click", () => updateSubscription("cancel"));
 document.querySelector("#detail-delete").addEventListener("click", deleteCustomer);
+document.querySelector("#add-subscription").addEventListener("click", () => openSubscriptionForm());
+document.querySelector("#cancel-subscription-edit").addEventListener("click", () => document.querySelector("#subscription-form").classList.add("hidden"));
+document.querySelector("#subscription-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!selectedCustomer) return;
+  const start = document.querySelector("#subscription-start").value;
+  const end = document.querySelector("#subscription-end").value;
+  const error = document.querySelector("#subscription-error");
+  if (new Date(end) <= new Date(start)) { error.textContent = "End date must be after the start date."; return; }
+  const id = document.querySelector("#subscription-id").value || `subscription-${Date.now()}`;
+  const record = { id, plan: document.querySelector("#subscription-plan").value, billingCycle: document.querySelector("#subscription-cycle").value, status: document.querySelector("#subscription-status").value, price: PLAN_PRICES[document.querySelector("#subscription-plan").value] * BILLING[document.querySelector("#subscription-cycle").value].multiplier, startDate: new Date(`${start}T00:00:00`).toISOString(), endDate: new Date(`${end}T23:59:59`).toISOString(), createdAt: new Date().toISOString() };
+  selectedCustomer.subscriptions = [...historyFor(selectedCustomer).filter((subscription) => subscription.id !== id), record];
+  const current = [...selectedCustomer.subscriptions].sort((a, b) => new Date(b.startDate) - new Date(a.startDate))[0];
+  Object.assign(selectedCustomer, { plan: current.plan, billingCycle: current.billingCycle, status: current.status, price: current.price, startDate: current.startDate, endDate: current.endDate, renewal: current.endDate });
+  saveCustomers(); addActivity(document.querySelector("#subscription-id").value ? "Subscription history updated" : "Subscription history added", selectedCustomer); document.querySelector("#subscription-form").classList.add("hidden"); renderStats(); renderTable(); renderActivity(); openDetails(selectedCustomer.id); showToast("Subscription record saved.");
+});
 document.querySelector("#add-customer").addEventListener("click", openAddModal);
 document.querySelector("#add-close").addEventListener("click", closeAddModal);
 document.querySelector("#add-modal").addEventListener("click", (event) => { if (event.target.id === "add-modal") closeAddModal(); });
@@ -138,6 +196,7 @@ document.querySelector("#add-customer-form").addEventListener("submit", (event) 
     joined: new Date(`${start}T00:00:00`).toISOString(),
     endDate: new Date(`${end}T23:59:59`).toISOString(),
     renewal: new Date(`${end}T23:59:59`).toISOString(),
+    subscriptions: [{ id: `subscription-${Date.now()}`, plan: document.querySelector("#new-plan").value, billingCycle: document.querySelector("#new-cycle").value, status: "active", price: PLAN_PRICES[document.querySelector("#new-plan").value] * BILLING[document.querySelector("#new-cycle").value].multiplier, startDate: new Date(`${start}T00:00:00`).toISOString(), endDate: new Date(`${end}T23:59:59`).toISOString(), createdAt: new Date().toISOString() }],
     manuallyAdded: true
   };
   customers = [...customers, customer];

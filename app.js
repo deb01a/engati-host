@@ -9,7 +9,8 @@ const BILLING_CYCLES = {
   yearly: { label: "Yearly", months: 12, multiplier: 4 }
 };
 const FLUTTERWAVE_CHECKOUT_LINKS = {
-  "accelerator-bi-annual": "https://flutterwave.com/pay/4oaxpyylovgj?_gl=1%2a107hr0c%2a_gcl_au%2aNzQ4NDY5Njk5LjE3ODkwMzI4MzE.%2a_ga%2aMTU4NzI3ODEzNS4xNzg5MDMyNjI5%2a_ga_KQ9NSEMFCF%2aczE3ODkwMzI2NDMkbzEkZzEkdDE3ODkwMzM0MDckajU5JGwwJGgw"
+  "accelerator-quarterly": "https://flutterwave.com/pay/4oaxpyylovgj?_gl=1%2a107hr0c%2a_gcl_au%2aNzQ4NDY5Njk5LjE3ODkwMzI4MzE.%2a_ga%2aMTU4NzI3ODEzNS4xNzg5MDMyNjI5%2a_ga_KQ9NSEMFCF%2aczE3ODkwMzI2NDMkbzEkZzEkdDE3ODkwMzM0MDckajU5JGwwJGgw",
+  "accelerator-bi-annual": "https://flutterwave.com/pay/nitwcovbb7we"
 };
 
 const state = { authMode: "login", selectedPlan: null, billingCycle: "quarterly" };
@@ -79,7 +80,39 @@ function getAccounts() {
     accounts.push({ name: "Microfinance Pennywise Bank", email: "accounts@pennywisebank.example", plan: "accelerator", billingCycle: "quarterly", price: 99, status: "active", joined: new Date().toISOString(), renewal: new Date(Date.now() + 90 * 86400000).toISOString(), seeded: true });
     localStorage.setItem("engatiHostAccounts", JSON.stringify(accounts));
   }
-  return accounts;
+  let changed = false;
+  const normalized = accounts.map((account) => {
+    if (Array.isArray(account.subscriptions)) return account;
+    changed = true;
+    return {
+      ...account,
+      subscriptions: account.plan ? [{
+        id: `subscription-${account.email}-${Date.now()}`,
+        plan: account.plan,
+        billingCycle: account.billingCycle || "quarterly",
+        price: account.price || PLANS[account.plan]?.price || 0,
+        status: account.status || "active",
+        startDate: account.startDate || account.joined,
+        endDate: account.endDate || account.renewal,
+        createdAt: account.joined || new Date().toISOString()
+      }] : []
+    };
+  });
+  if (changed) localStorage.setItem("engatiHostAccounts", JSON.stringify(normalized));
+  return normalized;
+}
+
+function subscriptionHistory(account) {
+  return Array.isArray(account.subscriptions)
+    ? [...account.subscriptions].sort((a, b) => new Date(b.startDate || b.createdAt) - new Date(a.startDate || a.createdAt))
+    : [];
+}
+
+function renderSubscriptionHistory(account) {
+  const history = subscriptionHistory(account);
+  document.querySelector("#dashboard-history").innerHTML = history.length
+    ? history.map((subscription) => `<div class="history-item"><div><strong>${PLANS[subscription.plan]?.name || "Package"} · ${BILLING_CYCLES[subscription.billingCycle]?.label || "Billing cycle"}</strong><small>${subscription.status || "active"} · ${new Date(subscription.startDate).toLocaleDateString()} – ${new Date(subscription.endDate).toLocaleDateString()}</small></div><b>$${subscription.price || 0}</b></div>`).join("")
+    : '<p class="history-empty">Your subscription history will appear here.</p>';
 }
 
 function showDashboard(account) {
@@ -96,6 +129,7 @@ function showDashboard(account) {
     document.querySelector("#dashboard-access-copy").textContent = hasExpiredPackage ? "Your package has ended. Choose a package below to renew access." : "Your account is ready. Pick a plan below when you are ready to subscribe.";
     document.querySelector("#dashboard-renew").textContent = hasExpiredPackage ? "Renew package ↗" : "Choose a plan ↗";
     document.querySelector("#dashboard-renew").onclick = () => openPlanChooser(account.plan || "accelerator");
+    renderSubscriptionHistory(account);
     closeModal(authModal);
     openModal(dashboardModal);
     return;
@@ -112,6 +146,7 @@ function showDashboard(account) {
   document.querySelector("#dashboard-access-copy").textContent = `Your ${plan.name} package is available until ${new Date(account.endDate || account.renewal).toLocaleDateString()}.`;
   document.querySelector("#dashboard-renew").textContent = "Change or renew package ↗";
   document.querySelector("#dashboard-renew").onclick = () => openPlanChooser(account.plan);
+  renderSubscriptionHistory(account);
   closeModal(authModal);
   openModal(dashboardModal);
 }
@@ -250,7 +285,9 @@ async function verifyPaymentReturn() {
     return;
   }
   const accounts = getAccounts();
-  const updated = { ...account, plan: result.plan, billingCycle: result.billingCycle, status: "active", price: result.amount, renewal: new Date(Date.now() + BILLING_CYCLES[result.billingCycle].months * 30 * 86400000).toISOString() };
+  const endDate = new Date(Date.now() + BILLING_CYCLES[result.billingCycle].months * 30 * 86400000).toISOString();
+  const subscription = { id: `subscription-${Date.now()}`, plan: result.plan, billingCycle: result.billingCycle, status: "active", price: result.amount, startDate: new Date().toISOString(), endDate, createdAt: new Date().toISOString() };
+  const updated = { ...account, plan: result.plan, billingCycle: result.billingCycle, status: "active", price: result.amount, renewal: endDate, endDate, subscriptions: [...subscriptionHistory(account), subscription] };
   localStorage.setItem("engatiHostAccounts", JSON.stringify(accounts.map((item) => item.email === account.email ? updated : item)));
   localStorage.setItem("engatiHostSession", JSON.stringify(updated));
   localStorage.removeItem("engatiHostPendingPayment");

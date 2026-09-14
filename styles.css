@@ -9,4 +9,5 @@
 .billing-toggle button{border:1px solid var(--line);border-radius:999px;padding:9px 13px;color:var(--muted);font-size:12px}
 .billing-toggle button.active{background:var(--ink);border-color:var(--ink);color:#fff}
 .pricing-note{color:var(--muted);font-size:12px;margin:24px 0 0;text-align:center}
+.dashboard-history{border-top:1px solid var(--line);margin:24px 0;padding-top:20px}.dashboard-history>.eyebrow{margin-bottom:10px}.history-item{display:flex;justify-content:space-between;gap:18px;padding:12px 0;border-bottom:1px solid var(--line);font-size:12px}.history-item strong,.history-item small{display:block}.history-item small{color:var(--muted);font-size:10px;margin-top:4px;text-transform:capitalize}.history-item b{font-weight:600}.history-empty{color:var(--muted);font-size:12px;margin:0}
 @media(max-width:900px){.pricing-grid{grid-template-columns:1fr}}
