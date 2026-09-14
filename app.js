@@ -108,6 +108,12 @@ function subscriptionHistory(account) {
     : [];
 }
 
+function activeSubscription(account) {
+  return subscriptionHistory(account)
+    .filter((subscription) => subscription.status === "active" && new Date(subscription.endDate) >= new Date())
+    .sort((a, b) => new Date(b.endDate) - new Date(a.endDate))[0] || null;
+}
+
 function renderSubscriptionHistory(account) {
   const history = subscriptionHistory(account);
   document.querySelector("#dashboard-history").innerHTML = history.length
@@ -116,37 +122,40 @@ function renderSubscriptionHistory(account) {
 }
 
 function showDashboard(account) {
-  const expiry = account.endDate || account.renewal;
-  const expired = expiry && new Date(expiry) < new Date();
-  if (!account.plan || account.status !== "active" || expired) {
-    const hasExpiredPackage = Boolean(account.plan && expired);
+  const storedAccount = getAccounts().find((item) => item.email === account.email) || account;
+  const currentSubscription = activeSubscription(storedAccount);
+  const latestSubscription = subscriptionHistory(storedAccount)[0];
+  localStorage.setItem("engatiHostSession", JSON.stringify(storedAccount));
+  const expiry = currentSubscription?.endDate || latestSubscription?.endDate || storedAccount.endDate || storedAccount.renewal;
+  const hasExpiredPackage = Boolean(latestSubscription && new Date(latestSubscription.endDate) < new Date());
+  if (!currentSubscription) {
     document.querySelector("#dashboard-greeting").textContent = `Good to see you, ${account.name || "friend"}.`;
     document.querySelector("#dashboard-status").textContent = hasExpiredPackage ? "● Package expired" : "● No subscription";
-    document.querySelector("#dashboard-plan-name").textContent = hasExpiredPackage ? `${PLANS[account.plan]?.name || "Your"} package expired` : "No subscription";
+    document.querySelector("#dashboard-plan-name").textContent = hasExpiredPackage ? `${PLANS[latestSubscription.plan]?.name || "Your"} package expired` : "No subscription";
     document.querySelector("#dashboard-plan-price").textContent = hasExpiredPackage ? "Renew package" : "Choose a plan";
     document.querySelector("#dashboard-plan-renewal").textContent = hasExpiredPackage ? `Ended ${new Date(expiry).toLocaleDateString()}` : "Select a plan below to subscribe";
     document.querySelector("#dashboard-access-title").textContent = hasExpiredPackage ? "Your profile is still active" : "Account created";
     document.querySelector("#dashboard-access-copy").textContent = hasExpiredPackage ? "Your package has ended. Choose a package below to renew access." : "Your account is ready. Pick a plan below when you are ready to subscribe.";
     document.querySelector("#dashboard-renew").textContent = hasExpiredPackage ? "Renew package ↗" : "Choose a plan ↗";
-    document.querySelector("#dashboard-renew").onclick = () => openPlanChooser(account.plan || "accelerator");
-    renderSubscriptionHistory(account);
+    document.querySelector("#dashboard-renew").onclick = () => openPlanChooser(latestSubscription?.plan || storedAccount.plan || "accelerator");
+    renderSubscriptionHistory(storedAccount);
     closeModal(authModal);
     openModal(dashboardModal);
     return;
   }
 
-  const plan = PLANS[account.plan] || PLANS.growth;
-  const cycle = BILLING_CYCLES[account.billingCycle] || BILLING_CYCLES.yearly;
+  const plan = PLANS[currentSubscription.plan] || PLANS.growth;
+  const cycle = BILLING_CYCLES[currentSubscription.billingCycle] || BILLING_CYCLES.yearly;
   document.querySelector("#dashboard-status").textContent = "● Active";
-  document.querySelector("#dashboard-greeting").textContent = `Good to see you, ${account.name || "friend"}.`;
+  document.querySelector("#dashboard-greeting").textContent = `Good to see you, ${storedAccount.name || "friend"}.`;
   document.querySelector("#dashboard-plan-name").textContent = plan.name;
-  document.querySelector("#dashboard-plan-price").innerHTML = `$${plan.price * cycle.multiplier}<span>/${cycle.label.toLowerCase()}</span>`;
-  document.querySelector("#dashboard-plan-renewal").textContent = `Renews ${cycle.label.toLowerCase()}`;
+  document.querySelector("#dashboard-plan-price").innerHTML = `$${currentSubscription.price || plan.price * cycle.multiplier}<span>/${cycle.label.toLowerCase()}</span>`;
+  document.querySelector("#dashboard-plan-renewal").textContent = `Active until ${new Date(currentSubscription.endDate).toLocaleDateString()}`;
   document.querySelector("#dashboard-access-title").textContent = "Subscription active";
-  document.querySelector("#dashboard-access-copy").textContent = `Your ${plan.name} package is available until ${new Date(account.endDate || account.renewal).toLocaleDateString()}.`;
+  document.querySelector("#dashboard-access-copy").textContent = `Your ${plan.name} package (${cycle.label}) is active until ${new Date(currentSubscription.endDate).toLocaleDateString()}.`;
   document.querySelector("#dashboard-renew").textContent = "Change or renew package ↗";
-  document.querySelector("#dashboard-renew").onclick = () => openPlanChooser(account.plan);
-  renderSubscriptionHistory(account);
+  document.querySelector("#dashboard-renew").onclick = () => openPlanChooser(currentSubscription.plan);
+  renderSubscriptionHistory(storedAccount);
   closeModal(authModal);
   openModal(dashboardModal);
 }
