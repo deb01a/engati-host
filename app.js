@@ -83,31 +83,6 @@ function getAccounts() {
     localStorage.setItem("engatiHostAccounts", JSON.stringify(accounts));
   }
 
-  async function getRemoteAccount(email) {
-    try {
-      const response = await fetch(`${customerApi}?email=${encodeURIComponent(email)}`);
-      if (!response.ok) return null;
-      return response.json();
-    } catch (error) {
-      console.warn("Shared customer store unavailable; using local account data.", error);
-      return null;
-    }
-  }
-
-  async function saveRemoteAccount(account) {
-    try {
-      const response = await fetch(customerApi, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(account)
-      });
-      if (!response.ok) throw new Error("Your account could not be saved to the shared store.");
-      return response.json();
-    } catch (error) {
-      console.warn("Account saved locally; shared store unavailable.", error);
-      return null;
-    }
-  }
   let changed = false;
   const normalized = accounts.map((account) => {
     if (Array.isArray(account.subscriptions)) return account;
@@ -128,6 +103,32 @@ function getAccounts() {
   });
   if (changed) localStorage.setItem("engatiHostAccounts", JSON.stringify(normalized));
   return normalized;
+}
+
+async function getRemoteAccount(email) {
+  try {
+    const response = await fetch(`${customerApi}?email=${encodeURIComponent(email)}`);
+    if (!response.ok) return null;
+    return response.json();
+  } catch (error) {
+    console.warn("Shared customer store unavailable; using local account data.", error);
+    return null;
+  }
+}
+
+async function saveRemoteAccount(account) {
+  try {
+    const response = await fetch(customerApi, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(account)
+    });
+    if (!response.ok) throw new Error("Your account could not be saved to the shared store.");
+    return response.json();
+  } catch (error) {
+    console.warn("Account saved locally; shared store unavailable.", error);
+    return null;
+  }
 }
 
 function subscriptionHistory(account) {
