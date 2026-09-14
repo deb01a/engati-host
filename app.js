@@ -61,6 +61,7 @@ function updateProfile(account = JSON.parse(localStorage.getItem("engatiHostSess
   document.querySelector("#login-nav").classList.toggle("hidden", loggedIn);
   document.querySelector("#signup-nav").classList.toggle("hidden", loggedIn);
   document.querySelector("#profile-nav").classList.toggle("hidden", !loggedIn);
+  document.querySelector("#logout-nav").classList.toggle("hidden", !loggedIn);
   if (loggedIn) {
     const name = account.name || account.email.split("@")[0];
     document.querySelector("#profile-name").textContent = name;
@@ -288,11 +289,14 @@ authForm.addEventListener("submit", async (event) => {
   }
 });
 
-document.querySelector("#logout-button").addEventListener("click", () => {
+function logout() {
   localStorage.removeItem("engatiHostSession");
   updateProfile(null);
   closeModal(dashboardModal);
-});
+}
+
+document.querySelector("#logout-button").addEventListener("click", logout);
+document.querySelector("#logout-nav").addEventListener("click", logout);
 
 document.querySelector("#profile-nav").addEventListener("click", () => {
   const account = JSON.parse(localStorage.getItem("engatiHostSession") || "null");
