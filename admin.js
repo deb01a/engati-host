@@ -11,8 +11,8 @@ let selectedCustomer = null;
 const formatDate = (date) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(date));
 const initials = (name) => (name || "Customer").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 const planName = (customer) => PLAN_NAMES[customer.plan] || "No subscription";
-const billingCycle = (customer) => BILLING[customer.billingCycle] || BILLING.yearly;
-const planPrice = (customer) => (PLAN_PRICES[customer.plan] || 0) * (billingCycle(customer).multiplier || 1);
+const billingCycle = (customer) => BILLING[customer.billingCycle] || null;
+const planPrice = (customer) => (PLAN_PRICES[customer.plan] || 0) * (billingCycle(customer)?.multiplier || 1);
 const historyFor = (customer) => Array.isArray(customer.subscriptions) ? customer.subscriptions : (customer.plan ? [{
   id: `subscription-${customer.email}`,
   plan: customer.plan,
@@ -73,12 +73,12 @@ async function loadSharedCustomers() {
     const response = await fetch(customerApi);
     if (!response.ok) return;
     const remote = await response.json();
-    if (remote.length) {
-      customers = getCustomersFromList(remote);
-      localStorage.setItem(seedKey, JSON.stringify(customers));
-    } else {
-      await syncCustomers();
-    }
+    const local = getCustomers();
+    const merged = new Map(local.map((customer) => [customer.email, customer]));
+    remote.forEach((customer) => merged.set(customer.email, customer));
+    customers = getCustomersFromList([...merged.values()]);
+    localStorage.setItem(seedKey, JSON.stringify(customers));
+    await syncCustomers();
   } catch (error) {
     console.warn("Shared customer store unavailable; using local demo data.", error);
   }
@@ -92,7 +92,7 @@ function getCustomersFromList(stored) {
       ...customer, subscriptions, id: customer.id || `local-${index}`,
       status: active ? "active" : (latest?.status === "active" ? "expired" : (latest?.status || customer.status || "inactive")),
       plan: active?.plan || latest?.plan || customer.plan || null,
-      billingCycle: active?.billingCycle || latest?.billingCycle || customer.billingCycle || "yearly",
+      billingCycle: active?.billingCycle || latest?.billingCycle || customer.billingCycle || null,
       joined: customer.joined || customer.createdAt || new Date().toISOString(),
       startDate: active?.startDate || latest?.startDate || customer.startDate,
       endDate: active?.endDate || latest?.endDate || customer.endDate,
@@ -128,7 +128,7 @@ function deleteSubscription(id) {
 
 function renderStats() {
   const active = customers.filter((customer) => customer.status === "active");
-  const revenue = active.reduce((total, customer) => total + planPrice(customer) / billingCycle(customer).months, 0);
+  const revenue = active.reduce((total, customer) => total + planPrice(customer) / (billingCycle(customer)?.months || 1), 0);
   document.querySelector("#total-customers").textContent = customers.length;
   document.querySelector("#active-subscriptions").textContent = active.length;
   document.querySelector("#revenue").textContent = `$${Math.round(revenue).toLocaleString()}`;
@@ -139,7 +139,7 @@ function renderTable() {
   const search = document.querySelector("#customer-search").value.toLowerCase();
   const status = document.querySelector("#status-filter").value;
   const filtered = customers.filter((customer) => `${customer.name} ${customer.email}`.toLowerCase().includes(search) && (status === "all" || customer.status === status));
-  document.querySelector("#customer-rows").innerHTML = filtered.map((customer) => `<tr><td><div class="customer-cell"><span class="table-avatar">${initials(customer.name)}</span><span><strong>${customer.name || "Customer"}</strong><small>${customer.email}</small></span></div></td><td><span class="plan-label">${planName(customer)} <small>${billingCycle(customer).label}</small></span></td><td><span class="status status-${customer.status}"><i></i>${customer.status === "past_due" ? "Past due" : customer.status[0].toUpperCase() + customer.status.slice(1)}</span></td><td>${formatDate(customer.endDate || customer.renewal)}</td><td>${formatDate(customer.joined)}</td><td><button class="row-action" data-customer="${customer.id}">View →</button></td></tr>`).join("");
+  document.querySelector("#customer-rows").innerHTML = filtered.map((customer) => `<tr><td><div class="customer-cell"><span class="table-avatar">${initials(customer.name)}</span><span><strong>${customer.name || "Customer"}</strong><small>${customer.email}</small></span></div></td><td><span class="plan-label">${planName(customer)} <small>${billingCycle(customer)?.label || "—"}</small></span></td><td><span class="status status-${customer.status}"><i></i>${customer.status === "past_due" ? "Past due" : customer.status === "inactive" ? "No subscription" : customer.status[0].toUpperCase() + customer.status.slice(1)}</span></td><td>${customer.endDate || customer.renewal ? formatDate(customer.endDate || customer.renewal) : "—"}</td><td>${formatDate(customer.joined)}</td><td><button class="row-action" data-customer="${customer.id}">View →</button></td></tr>`).join("");
   document.querySelector("#empty-state").classList.toggle("hidden", filtered.length > 0);
   document.querySelectorAll("[data-customer]").forEach((button) => button.addEventListener("click", () => openDetails(button.dataset.customer)));
 }
@@ -155,7 +155,7 @@ function openDetails(id) {
   document.querySelector("#detail-avatar").textContent = initials(selectedCustomer.name);
   document.querySelector("#detail-name").textContent = selectedCustomer.name || "Customer";
   document.querySelector("#detail-email").textContent = selectedCustomer.email;
-  document.querySelector("#detail-plan").textContent = `${planName(selectedCustomer)} · ${billingCycle(selectedCustomer).label}`;
+  document.querySelector("#detail-plan").textContent = `${planName(selectedCustomer)}${billingCycle(selectedCustomer) ? ` · ${billingCycle(selectedCustomer).label}` : ""}`;
   document.querySelector("#detail-status").textContent = selectedCustomer.status === "past_due" ? "Past due" : selectedCustomer.status[0].toUpperCase() + selectedCustomer.status.slice(1);
   document.querySelector("#detail-start").textContent = formatDate(selectedCustomer.startDate || selectedCustomer.joined);
   document.querySelector("#detail-end").textContent = formatDate(selectedCustomer.endDate || selectedCustomer.renewal);
@@ -169,7 +169,7 @@ function updateSubscription(action) {
   if (action === "renew") {
     selectedCustomer.status = "active";
     selectedCustomer.startDate = new Date().toISOString();
-    selectedCustomer.endDate = new Date(Date.now() + billingCycle(selectedCustomer).days * 86400000).toISOString();
+    selectedCustomer.endDate = new Date(Date.now() + (billingCycle(selectedCustomer)?.days || BILLING.quarterly.days) * 86400000).toISOString();
     selectedCustomer.renewal = selectedCustomer.endDate;
     selectedCustomer.subscriptions = [...historyFor(selectedCustomer), { id: `subscription-${Date.now()}`, plan: selectedCustomer.plan, billingCycle: selectedCustomer.billingCycle, price: planPrice(selectedCustomer), status: "active", startDate: selectedCustomer.startDate, endDate: selectedCustomer.endDate, createdAt: new Date().toISOString() }];
     addActivity("Subscription renewed", selectedCustomer);
@@ -273,6 +273,6 @@ document.querySelector("#add-customer-form").addEventListener("submit", (event) 
 document.querySelector("#admin-logout").addEventListener("click", () => { window.location.href = "index.html"; });
 document.querySelector("#export-customers").addEventListener("click", () => {
   const header = "Name,Email,Plan,Billing cycle,Status,Next renewal,Joined\n";
-  const rows = customers.map((customer) => [customer.name, customer.email, planName(customer), billingCycle(customer).label, customer.status, formatDate(customer.renewal), formatDate(customer.joined)].map((value) => `"${String(value || "").replaceAll('"', '""')}"`).join(",")).join("\n");
+  const rows = customers.map((customer) => [customer.name, customer.email, planName(customer), billingCycle(customer)?.label || "", customer.status, customer.renewal ? formatDate(customer.renewal) : "", formatDate(customer.joined)].map((value) => `"${String(value || "").replaceAll('"', '""')}"`).join(",")).join("\n");
   const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([header + rows], { type: "text/csv" })); link.download = "engati-host-customers.csv"; link.click(); URL.revokeObjectURL(link.href);
 });
