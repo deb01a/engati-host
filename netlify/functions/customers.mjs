@@ -1,32 +1,32 @@
 import { getStore } from "@netlify/blobs";
 
 const store = () => getStore({ name: "engati-host-customers", consistency: "strong" });
-const json = (body, statusCode = 200) => ({
-  statusCode,
+const json = (body, status = 200) => new Response(JSON.stringify(body), {
+  status,
   headers: {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type"
-  },
-  body: JSON.stringify(body)
+  }
 });
 
-export default async (event) => {
-  if (event.httpMethod === "OPTIONS") return json({}, 204);
+export default async (request) => {
+  if (request.method === "OPTIONS") return json({}, 204);
   try {
     const blob = store();
     const customers = (await blob.get("customers", { type: "json" })) || [];
-    const id = event.queryStringParameters?.id;
-    const email = event.queryStringParameters?.email?.toLowerCase();
+    const url = new URL(request.url);
+    const id = url.searchParams.get("id");
+    const email = url.searchParams.get("email")?.toLowerCase();
 
-    if (event.httpMethod === "GET") {
+    if (request.method === "GET") {
       if (id) return json(customers.find((customer) => customer.id === id) || null);
       if (email) return json(customers.find((customer) => customer.email === email) || null);
       return json(customers);
     }
 
-    if (event.httpMethod === "POST") {
-      const input = JSON.parse(event.body || "{}");
+    if (request.method === "POST") {
+      const input = await request.json();
       const customer = {
         ...input,
         id: input.id || crypto.randomUUID(),
@@ -39,14 +39,14 @@ export default async (event) => {
       return json(customer, 201);
     }
 
-    if ((event.httpMethod === "PATCH" || event.httpMethod === "DELETE") && id) {
+    if ((request.method === "PATCH" || request.method === "DELETE") && id) {
       const index = customers.findIndex((customer) => customer.id === id);
       if (index < 0) return json({ error: "Customer not found" }, 404);
-      if (event.httpMethod === "DELETE") {
+      if (request.method === "DELETE") {
         await blob.setJSON("customers", customers.filter((customer) => customer.id !== id));
         return json({ deleted: true });
       }
-      const updated = { ...customers[index], ...JSON.parse(event.body || "{}"), updatedAt: new Date().toISOString() };
+      const updated = { ...customers[index], ...(await request.json()), updatedAt: new Date().toISOString() };
       customers[index] = updated;
       await blob.setJSON("customers", customers);
       return json(updated);
