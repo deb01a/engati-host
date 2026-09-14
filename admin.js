@@ -4,6 +4,7 @@ const deletedKey = "engatiHostDeletedCustomers";
 const PLAN_NAMES = { accelerator: "Accelerator", growth: "Growth", enterprise: "Enterprise" };
 const PLAN_PRICES = { accelerator: 99, growth: 399, enterprise: 599 };
 const BILLING = { quarterly: { label: "Quarterly", days: 90, months: 3, multiplier: 1 }, "bi-annual": { label: "Bi-annual", days: 180, months: 6, multiplier: 2 }, yearly: { label: "Yearly", days: 365, months: 12, multiplier: 4 } };
+const customerApi = "/.netlify/functions/customers";
 let customers = [];
 let selectedCustomer = null;
 
@@ -51,7 +52,54 @@ const getCustomers = () => {
   };
   });
 };
-const saveCustomers = () => localStorage.setItem(seedKey, JSON.stringify(customers));
+const saveCustomers = () => {
+  localStorage.setItem(seedKey, JSON.stringify(customers));
+  void syncCustomers();
+};
+async function syncCustomers() {
+  try {
+    const response = await fetch(customerApi);
+    if (!response.ok) throw new Error("Unable to save customers to the shared store.");
+    for (const customer of customers) {
+      const saved = await fetch(customerApi, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(customer) });
+      if (!saved.ok) throw new Error("Unable to save customer.");
+    }
+  } catch (error) {
+    console.warn("Customer changes remain in local storage until the shared store is available.", error);
+  }
+}
+async function loadSharedCustomers() {
+  try {
+    const response = await fetch(customerApi);
+    if (!response.ok) return;
+    const remote = await response.json();
+    if (remote.length) {
+      customers = getCustomersFromList(remote);
+      localStorage.setItem(seedKey, JSON.stringify(customers));
+    } else {
+      await syncCustomers();
+    }
+  } catch (error) {
+    console.warn("Shared customer store unavailable; using local demo data.", error);
+  }
+}
+function getCustomersFromList(stored) {
+  return stored.map((customer, index) => {
+    const subscriptions = historyFor(customer);
+    const active = activeSubscription({ ...customer, subscriptions });
+    const latest = latestSubscription({ ...customer, subscriptions });
+    return {
+      ...customer, subscriptions, id: customer.id || `local-${index}`,
+      status: active ? "active" : (latest?.status === "active" ? "expired" : (latest?.status || customer.status || "inactive")),
+      plan: active?.plan || latest?.plan || customer.plan || null,
+      billingCycle: active?.billingCycle || latest?.billingCycle || customer.billingCycle || "yearly",
+      joined: customer.joined || customer.createdAt || new Date().toISOString(),
+      startDate: active?.startDate || latest?.startDate || customer.startDate,
+      endDate: active?.endDate || latest?.endDate || customer.endDate,
+      renewal: active?.endDate || latest?.endDate || customer.renewal
+    };
+  });
+}
 const getActivities = () => JSON.parse(localStorage.getItem(activityKey) || "[]");
 const addActivity = (message, customer) => localStorage.setItem(activityKey, JSON.stringify([{ message, name: customer.name || "Customer", date: new Date().toISOString() }, ...getActivities()].slice(0, 8)));
 
@@ -144,13 +192,17 @@ function openAddModal() {
   document.querySelector("#add-modal").classList.add("is-open");
   document.querySelector("#add-modal").setAttribute("aria-hidden", "false");
 }
-function deleteCustomer() {
+async function deleteCustomer() {
   if (!selectedCustomer || !window.confirm(`Delete ${selectedCustomer.name || "this customer"} permanently? They will be able to register again with the same email.`)) return;
   customers = customers.filter((customer) => customer.id !== selectedCustomer.id);
   const deleted = JSON.parse(localStorage.getItem(deletedKey) || "[]");
   if (!deleted.includes(selectedCustomer.email)) deleted.push(selectedCustomer.email);
   localStorage.setItem(deletedKey, JSON.stringify(deleted));
   saveCustomers();
+  if (!selectedCustomer.id.startsWith("local-")) {
+    const response = await fetch(`${customerApi}?id=${encodeURIComponent(selectedCustomer.id)}`, { method: "DELETE" });
+    if (!response.ok) throw new Error("Unable to delete this customer from the shared store.");
+  }
   addActivity("Customer deleted", selectedCustomer);
   selectedCustomer = null;
   closeDetails();
@@ -158,7 +210,7 @@ function deleteCustomer() {
 }
 
 customers = getCustomers();
-renderStats(); renderTable(); renderActivity();
+void loadSharedCustomers().finally(() => { renderStats(); renderTable(); renderActivity(); });
 document.querySelector("#customer-search").addEventListener("input", renderTable);
 document.querySelector("#status-filter").addEventListener("change", renderTable);
 document.querySelector("#detail-close").addEventListener("click", closeDetails);

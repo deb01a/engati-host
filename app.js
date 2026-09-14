@@ -19,6 +19,7 @@ const dashboardModal = document.querySelector("#dashboard-modal");
 const planModal = document.querySelector("#plan-modal");
 const authForm = document.querySelector("#auth-form");
 const paymentFunction = "/.netlify/functions/payments";
+const customerApi = "/.netlify/functions/customers";
 
 function openModal(modal) {
   modal.classList.add("is-open");
@@ -79,6 +80,32 @@ function getAccounts() {
   if (!deleted.includes("accounts@pennywisebank.example") && !accounts.some((account) => account.email === "accounts@pennywisebank.example")) {
     accounts.push({ name: "Microfinance Pennywise Bank", email: "accounts@pennywisebank.example", plan: "accelerator", billingCycle: "quarterly", price: 99, status: "active", joined: new Date().toISOString(), renewal: new Date(Date.now() + 90 * 86400000).toISOString(), seeded: true });
     localStorage.setItem("engatiHostAccounts", JSON.stringify(accounts));
+  }
+
+  async function getRemoteAccount(email) {
+    try {
+      const response = await fetch(`${customerApi}?email=${encodeURIComponent(email)}`);
+      if (!response.ok) return null;
+      return response.json();
+    } catch (error) {
+      console.warn("Shared customer store unavailable; using local account data.", error);
+      return null;
+    }
+  }
+
+  async function saveRemoteAccount(account) {
+    try {
+      const response = await fetch(customerApi, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(account)
+      });
+      if (!response.ok) throw new Error("Your account could not be saved to the shared store.");
+      return response.json();
+    } catch (error) {
+      console.warn("Account saved locally; shared store unavailable.", error);
+      return null;
+    }
   }
   let changed = false;
   const normalized = accounts.map((account) => {
@@ -219,7 +246,7 @@ document.addEventListener("click", (event) => {
   if (switchButton) setAuthMode(switchButton.dataset.switchAuth);
 });
 
-authForm.addEventListener("submit", (event) => {
+authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const email = document.querySelector("#auth-email").value.trim().toLowerCase();
   const password = document.querySelector("#auth-password").value;
@@ -233,6 +260,7 @@ authForm.addEventListener("submit", (event) => {
     }
     const account = { email, password, name: name || "friend", plan: null, billingCycle: null, status: "inactive", joined: new Date().toISOString() };
     localStorage.setItem("engatiHostAccounts", JSON.stringify([...accounts, account]));
+    await saveRemoteAccount(account);
     localStorage.setItem("engatiHostSession", JSON.stringify(account));
     updateProfile(account);
     if (state.selectedPlan) {
@@ -242,11 +270,13 @@ authForm.addEventListener("submit", (event) => {
     }
     showDashboard(account);
   } else {
-    const account = accounts.find((item) => item.email === email && item.password === password);
-    if (!account) {
+    const remoteAccount = await getRemoteAccount(email);
+    const account = (remoteAccount || accounts.find((item) => item.email === email)) || null;
+    if (!account || account.password !== password) {
       error.textContent = "We couldn't match that email and password. Create an account or try again.";
       return;
     }
+    localStorage.setItem("engatiHostAccounts", JSON.stringify([...accounts.filter((item) => item.email !== email), account]));
     localStorage.setItem("engatiHostSession", JSON.stringify(account));
     updateProfile(account);
     if (state.selectedPlan) {
@@ -298,6 +328,7 @@ async function verifyPaymentReturn() {
   const subscription = { id: `subscription-${Date.now()}`, plan: result.plan, billingCycle: result.billingCycle, status: "active", price: result.amount, startDate: new Date().toISOString(), endDate, createdAt: new Date().toISOString() };
   const updated = { ...account, plan: result.plan, billingCycle: result.billingCycle, status: "active", price: result.amount, renewal: endDate, endDate, subscriptions: [...subscriptionHistory(account), subscription] };
   localStorage.setItem("engatiHostAccounts", JSON.stringify(accounts.map((item) => item.email === account.email ? updated : item)));
+  await saveRemoteAccount(updated);
   localStorage.setItem("engatiHostSession", JSON.stringify(updated));
   localStorage.removeItem("engatiHostPendingPayment");
   window.history.replaceState({}, document.title, window.location.pathname);

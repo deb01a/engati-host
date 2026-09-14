@@ -5,7 +5,7 @@ A Netlify-ready static website for Engati Host. It includes:
 - Responsive marketing page
 - Product feature and use-case sections
 - Accelerator, Growth, and Enterprise plans with quarterly, bi-annual, and yearly billing
-- Login and sign-up flow backed by browser `localStorage` for demo purposes
+- Login and sign-up flow backed by Netlify Blobs, with browser `localStorage` fallback for offline demos
 - Customer dashboard with plan status and subscription history
 - Admin portal at `/admin.html` for customer search, subscription status, renewal/cancellation actions, subscription-history add/edit/delete controls, detail views, and CSV export
 - Netlify Function API at `/.netlify/functions/customers` backed by Netlify Blobs
@@ -19,9 +19,10 @@ Open `index.html` directly, or run:
 npm start
 ```
 
-Open `admin.html` to try the customer operations dashboard. Create a customer from
-the homepage first, then refresh the admin page to see it in the browser-backed
-demo customer list. Administrators can permanently delete a customer or add, edit, and delete
+Open `admin.html` to try the customer operations dashboard. Customer profiles and
+subscription history are synchronized through Netlify Blobs, so the same records
+can be used from the public site, admin site, and different browsers. Administrators
+can permanently delete a customer or add, edit, and delete
 individual subscription history records from the profile dialog; after a
 customer deletion, that email can register again.
 
@@ -31,20 +32,19 @@ Quarterly prices are the base prices: $99, $399, and $599. Bi-annual billing is 
 
 ## Production backend
 
-The customer management function uses Netlify Blobs for persistence. Set an
-`ADMIN_API_KEY` environment variable in Netlify, then call the endpoint with:
+The customer management function uses Netlify Blobs for persistence. The frontend
+uses `/.netlify/functions/customers` for shared reads and writes.
 
 ```text
 Authorization: Bearer YOUR_ADMIN_API_KEY
 ```
 
 Supported operations are `GET /customers`, `GET /customers?id=...`,
-`POST /customers`, and `PATCH /customers?id=...`. The visible admin page is a
-local demo UI; wire its fetch calls to the function after adding your preferred
-admin authentication provider.
+`GET /customers?email=...`, `POST /customers`, `PATCH /customers?id=...`, and
+`DELETE /customers?id=...`. Add admin authentication before exposing write
+operations publicly.
 
-The sign-up page in this starter stores accounts in the browser only so it can
-be previewed without a database and does not require email verification. For
-production authentication, replace that demo flow with a secure provider or
-backend and verify Flutterwave transactions server-side. Never store Flutterwave
-secret keys in frontend code.
+The sign-up page does not require email verification. For production
+authentication, replace the demo password flow with a secure provider or backend,
+protect admin writes with authentication, and verify Flutterwave transactions
+server-side. Never store Flutterwave secret keys in frontend code.
